@@ -1,4 +1,4 @@
-# Advanced URL Shortener
+# LinkScale
 
 A scalable backend-focused URL shortening service built using Spring Boot, PostgreSQL, Redis, and Flyway.
 
