@@ -25,12 +25,15 @@ public class UrlMapping {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+    @Column(name = "click_count")
+    private Long clickCount = 0L;
 
     public UrlMapping(){
     }
     @PrePersist
     public void prePersist(){
         this.createdAt = LocalDateTime.now();
+        this.clickCount = 0L;
     }
 
     public void setId(long id){
@@ -67,4 +70,7 @@ public class UrlMapping {
     public void setDeletedAt(LocalDateTime deletedAt){
         this.deletedAt = deletedAt;
     }
+    public Long getClickCount() { return clickCount; }
+    public void setClickCount(Long clickCount) { this.clickCount = clickCount; }
+
 }

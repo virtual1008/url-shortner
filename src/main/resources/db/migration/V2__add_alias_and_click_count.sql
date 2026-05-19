@@ -1,0 +1,5 @@
+ALTER TABLE url_mappings
+ADD COLUMN alias VARCHAR(255);
+
+ALTER TABLE url_mappings
+ADD COLUMN click_count BIGINT DEFAULT 0;

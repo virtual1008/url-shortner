@@ -1,7 +1,9 @@
 package com.ujjval.url_shortener.url.service.impl;
 
 import com.ujjval.url_shortener.common.util.Base62Encoder;
+import com.ujjval.url_shortener.exception.AliasAlreadyExistsException;
 import com.ujjval.url_shortener.exception.ExpiredUrlException;
+import com.ujjval.url_shortener.exception.InvalidUrlException;
 import com.ujjval.url_shortener.exception.UrlNotFoundException;
 import com.ujjval.url_shortener.idgenerator.context.IdGenerationContext;
 import com.ujjval.url_shortener.url.dto.UrlRequestDto;
@@ -42,8 +44,17 @@ public class UrlServiceImpl implements UrlService {
 
         urlMapping.setOriginalUrl(requestDto.getOriginalUrl());
 
-        String shortCode = Base62Encoder.encode(id);
+        String shortCode;
 
+        if (requestDto.getCustomAlias() != null &&
+                !requestDto.getCustomAlias().isBlank()) {
+            shortCode = requestDto.getCustomAlias();
+            if (repository.existsByShortCode(shortCode)) {
+                throw new AliasAlreadyExistsException("Alias already exists");
+            }
+        } else {
+            shortCode = Base62Encoder.encode(id);
+        }
         urlMapping.setShortCode(shortCode);
 
         LocalDateTime expiresAt;
@@ -78,6 +89,7 @@ public class UrlServiceImpl implements UrlService {
                 LocalDateTime.now().isAfter(urlMapping.getExpiresAt())) {
             throw new ExpiredUrlException("Short URL has expired");
         }
+        repository.incrementClickCount(shortCode);
         return urlMapping.getOriginalUrl();
     }
     @Override
@@ -93,5 +105,17 @@ public class UrlServiceImpl implements UrlService {
         urlMapping.setDeletedAt(LocalDateTime.now());
 
         repository.save(urlMapping);
+    }
+
+    @Override
+    @Transactional
+    public void restoreUrl(String shortCode){
+        UrlMapping url = repository.findByShortCode(shortCode)
+                .orElseThrow(()->new UrlNotFoundException("URL not found"));
+        if(url.getDeletedAt()==null){
+            throw new InvalidUrlException("URL is not deleted");
+        }
+        url.setDeletedAt(null);
+        repository.save(url);
     }
 }

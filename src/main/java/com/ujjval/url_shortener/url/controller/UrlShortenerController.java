@@ -45,4 +45,9 @@ public class UrlShortenerController {
         urlService.softDelete(shortCode);
         return ResponseEntity.ok("URL deleted successfully (soft delete)");
     }
+
+    public ResponseEntity<String> restore(@PathVariable String shortCode){
+       urlService.restoreUrl(shortCode);
+       return ResponseEntity.ok("URL restored successfully");
+    }
 }
