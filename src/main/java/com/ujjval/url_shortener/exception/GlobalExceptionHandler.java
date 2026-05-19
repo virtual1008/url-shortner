@@ -47,6 +47,17 @@ public class GlobalExceptionHandler {
                 ex.getMessage()
         );
     }
+    @ExceptionHandler(AliasAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponse> handleAliasAlreadyExists(
+            AliasAlreadyExistsException ex
+    ) {
+
+        return buildErrorResponse(
+                HttpStatus.CONFLICT,
+                "Alias Already Exists",
+                ex.getMessage()
+        );
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationException(
@@ -93,4 +104,6 @@ public class GlobalExceptionHandler {
                 .status(status)
                 .body(response);
     }
+
+
 }

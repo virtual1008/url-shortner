@@ -9,4 +9,5 @@ public interface UrlService {
 
     String getOriginalUrl(String shortCode);
     void softDelete(String shortCode);
+    void restoreUrl(String shortCode);
 }

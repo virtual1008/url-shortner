@@ -15,4 +15,10 @@ public class UrlRequestDto {
     private String originalUrl;
 
     private Long expiresInSeconds;
+
+    @Pattern(
+            regexp = "^[a-zA-Z0-9_-]*$",
+            message = "Alias can only contain letters, numbers, _ and -"
+    )
+    private String customAlias;
 }
