@@ -311,4 +311,16 @@ LinkScale is being designed to evolve toward:
 
 # Author
 
-Developed as a backend engineering and scalable systems learning project focused on real-world architecture practices.
+# Author
+
+Developed by Ujjval Tailor
+
+Backend Engineer focused on:
+
+* Scalable systems
+* Distributed architecture
+* System design
+* Backend infrastructure engineering
+
+LinkedIn: https://www.linkedin.com/in/ujjval-tailor-318850198/
+
