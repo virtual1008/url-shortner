@@ -1,108 +1,73 @@
 package com.ujjval.url_shortener.exception;
 
 import com.ujjval.url_shortener.exception.dto.ErrorResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.MessageSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.net.URI;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Locale;
 
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(UrlNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleUrlNotFoundException(
-            UrlNotFoundException ex
-    ) {
+    private final MessageSource messageSource;
 
-        return buildErrorResponse(
-                HttpStatus.NOT_FOUND,
-                "URL Not Found",
-                ex.getMessage()
-        );
+    @ExceptionHandler(BaseAppException.class)
+    public ResponseEntity<ProblemDetail> handleAppException(BaseAppException ex , Locale locale){
+           ErrorCode errorCode = ex.getErrorCode();
+
+           String detailMessage = messageSource.getMessage(errorCode.getMessageKey(),null , locale);
+           ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(errorCode.getStatus(), detailMessage);
+           problemDetail.setTitle(errorCode.getCode());
+           problemDetail.setType(URI.create("https://api.yourdomain.com/errors/" + errorCode.getCode()));
+           problemDetail.setProperty("errorCode", errorCode.getCode());
+           problemDetail.setProperty("timestamp", Instant.now());
+
+           return ResponseEntity.status(errorCode.getStatus()).body(problemDetail);
     }
-
-    @ExceptionHandler(ExpiredUrlException.class)
-    public ResponseEntity<ErrorResponse> handleExpiredUrlException(
-            ExpiredUrlException ex
-    ) {
-
-        return buildErrorResponse(
-                HttpStatus.GONE,
-                "URL Expired",
-                ex.getMessage()
-        );
-    }
-
-    @ExceptionHandler(InvalidUrlException.class)
-    public ResponseEntity<ErrorResponse> handleInvalidUrlException(
-            InvalidUrlException ex
-    ) {
-
-        return buildErrorResponse(
-                HttpStatus.BAD_REQUEST,
-                "Invalid URL",
-                ex.getMessage()
-        );
-    }
-    @ExceptionHandler(AliasAlreadyExistsException.class)
-    public ResponseEntity<ErrorResponse> handleAliasAlreadyExists(
-            AliasAlreadyExistsException ex
-    ) {
-
-        return buildErrorResponse(
-                HttpStatus.CONFLICT,
-                "Alias Already Exists",
-                ex.getMessage()
-        );
-    }
-
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(
-            MethodArgumentNotValidException ex
-    ) {
+    public ResponseEntity<ProblemDetail> handleValidationException(MethodArgumentNotValidException ex) {
 
-        String message = ex.getBindingResult()
-                .getFieldError()
-                .getDefaultMessage();
+        String defaultMessage = ex.getBindingResult()
+                .getFieldError() != null ?
+                ex.getBindingResult().getFieldError().getDefaultMessage() : "Validation failed";
 
-        return buildErrorResponse(
-                HttpStatus.BAD_REQUEST,
-                "Validation Failed",
-                message
-        );
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, defaultMessage);
+        problemDetail.setTitle("Validation Failed");
+        problemDetail.setType(URI.create("https://api.yourdomain.com/errors/VALIDATION-FAILED"));
+        problemDetail.setProperty("errorCode", "VALIDATION-1000");
+        problemDetail.setProperty("timestamp", Instant.now());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problemDetail);
     }
 
+    // 3. Catches any unexpected crashes (NullPointerExceptions, DB Down, etc.)
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleException(
-            Exception ex
-    ) {
+    public ResponseEntity<ProblemDetail> handleGenericException(Exception ex) {
 
-        return buildErrorResponse(
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
                 HttpStatus.INTERNAL_SERVER_ERROR,
-                "Internal Server Error",
-                "Something went wrong"
+                "An unexpected error occurred. Please try again later."
         );
-    }
+        problemDetail.setTitle("Internal Server Error");
+        problemDetail.setType(URI.create("https://api.yourdomain.com/errors/INTERNAL-SERVER-ERROR"));
+        problemDetail.setProperty("errorCode", "SYS-5000");
+        problemDetail.setProperty("timestamp", Instant.now());
 
-    private ResponseEntity<ErrorResponse> buildErrorResponse(
-            HttpStatus status,
-            String error,
-            String message
-    ) {
+        // Note: You should log 'ex.getMessage()' and the stack trace here using @Slf4j
+        // so you know what actually crashed, but DO NOT return 'ex.getMessage()' to the client
+        // in a 500 error, as it might leak database or infrastructure secrets.
 
-        ErrorResponse response = ErrorResponse.builder()
-                .timestamp(LocalDateTime.now())
-                .status(status.value())
-                .error(error)
-                .message(message)
-                .build();
-
-        return ResponseEntity
-                .status(status)
-                .body(response);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
     }
 
 

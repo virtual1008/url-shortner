@@ -1,12 +1,8 @@
 package com.ujjval.url_shortener.exception;
 
-public class ExpiredUrlException extends RuntimeException {
+public class ExpiredUrlException extends BaseAppException {
 
-    public ExpiredUrlException(String message) {
-        super(message);
-    }
-
-    public ExpiredUrlException(String message, Throwable cause) {
-        super(message, cause);
+    public ExpiredUrlException(ErrorCode errorCode) {
+        super(errorCode);
     }
 }

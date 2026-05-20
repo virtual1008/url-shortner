@@ -47,3 +47,12 @@ application:
     id-key: "url:id:counter"
     url-prefix: "url:"
     ttl-hours: 24
+  pagination:
+    default-page: 0
+    default-size: 20
+    max-size: 100
+
+logging:
+  level:
+    root: INFO
+    com.ujjval.url_shortener: DEBUG

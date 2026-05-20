@@ -1,12 +1,8 @@
 package com.ujjval.url_shortener.exception;
 
-public class InvalidUrlException extends RuntimeException {
+public class InvalidUrlException extends BaseAppException {
 
-    public InvalidUrlException(String message) {
-        super(message);
-    }
-
-    public InvalidUrlException(String message, Throwable cause) {
-        super(message, cause);
+    public InvalidUrlException(ErrorCode errorCode) {
+        super(errorCode);
     }
 }
