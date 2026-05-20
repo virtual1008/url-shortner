@@ -1,5 +1,6 @@
 package com.ujjval.url_shortener.url.service.impl;
 
+import com.ujjval.url_shortener.cache.service.UrlCacheService;
 import com.ujjval.url_shortener.common.util.Base62Encoder;
 import com.ujjval.url_shortener.exception.AliasAlreadyExistsException;
 import com.ujjval.url_shortener.exception.ExpiredUrlException;
@@ -13,12 +14,14 @@ import com.ujjval.url_shortener.url.repository.UrlMappingRepository;
 import com.ujjval.url_shortener.url.service.UrlService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class UrlServiceImpl implements UrlService {
 
@@ -26,6 +29,7 @@ public class UrlServiceImpl implements UrlService {
 
     private final IdGenerationContext idGenerationContext;
 
+    private final UrlCacheService urlCacheService;
     @Value("${application.base-url}")
     private String baseUrl;
 
@@ -77,6 +81,14 @@ public class UrlServiceImpl implements UrlService {
 
     @Override
     public String getOriginalUrl(String shortCode) {
+        String cacheUrl = urlCacheService.get(shortCode);
+
+        if(cacheUrl!=null){
+            repository.incrementClickCount(shortCode);
+            log.info("cache hit");
+            return cacheUrl;
+        }
+        log.info("cache miss");
         UrlMapping urlMapping = repository
                 .findByShortCode(shortCode)
                 .orElseThrow(() ->
@@ -90,6 +102,10 @@ public class UrlServiceImpl implements UrlService {
             throw new ExpiredUrlException("Short URL has expired");
         }
         repository.incrementClickCount(shortCode);
+        urlCacheService.save(
+                shortCode,
+                urlMapping.getOriginalUrl()
+        );
         return urlMapping.getOriginalUrl();
     }
     @Override
@@ -105,6 +121,7 @@ public class UrlServiceImpl implements UrlService {
         urlMapping.setDeletedAt(LocalDateTime.now());
 
         repository.save(urlMapping);
+        urlCacheService.delete(shortCode);
     }
 
     @Override
@@ -116,6 +133,10 @@ public class UrlServiceImpl implements UrlService {
             throw new InvalidUrlException("URL is not deleted");
         }
         url.setDeletedAt(null);
+        urlCacheService.save(
+                shortCode,
+                url.getOriginalUrl()
+        );
         repository.save(url);
     }
 }

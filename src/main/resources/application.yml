@@ -4,6 +4,11 @@ spring:
   redis:
     host: localhost
     port: 6379
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 5000
 
   datasource:
     url: jdbc:postgresql://localhost:5432/url_shortener
@@ -40,3 +45,5 @@ application:
     cron: "0 0 2 * * *"
   redis:
     id-key: "url:id:counter"
+    url-prefix: "url:"
+    ttl-hours: 24
