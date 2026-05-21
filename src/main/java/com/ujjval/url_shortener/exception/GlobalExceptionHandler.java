@@ -50,7 +50,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problemDetail);
     }
 
-    // 3. Catches any unexpected crashes (NullPointerExceptions, DB Down, etc.)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ProblemDetail> handleGenericException(Exception ex) {
 
@@ -63,9 +62,6 @@ public class GlobalExceptionHandler {
         problemDetail.setProperty("errorCode", "SYS-5000");
         problemDetail.setProperty("timestamp", Instant.now());
 
-        // Note: You should log 'ex.getMessage()' and the stack trace here using @Slf4j
-        // so you know what actually crashed, but DO NOT return 'ex.getMessage()' to the client
-        // in a 500 error, as it might leak database or infrastructure secrets.
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
     }
