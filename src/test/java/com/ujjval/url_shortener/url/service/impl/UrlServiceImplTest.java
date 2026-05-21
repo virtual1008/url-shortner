@@ -1,0 +1,385 @@
+package com.ujjval.url_shortener.url.service.impl;
+
+import com.ujjval.url_shortener.cache.service.UrlCacheService;
+import com.ujjval.url_shortener.cache.service.impl.UrlCacheServiceImpl;
+import com.ujjval.url_shortener.exception.*;
+import com.ujjval.url_shortener.idgenerator.context.IdGenerationContext;
+import com.ujjval.url_shortener.url.dto.UrlRequestDto;
+import com.ujjval.url_shortener.url.dto.UrlResponseDto;
+import com.ujjval.url_shortener.url.entity.UrlMapping;
+import com.ujjval.url_shortener.url.repository.UrlMappingRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.shadow.com.univocity.parsers.annotations.Nested;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@DisplayName("URL Module - Service Layer Test Suite")
+public class UrlServiceImplTest {
+    @Mock
+    private UrlMappingRepository repository;
+    @Mock
+    private IdGenerationContext idGenerationContext;
+    @Mock
+    private UrlCacheService urlCacheService;
+    @InjectMocks
+    private UrlServiceImpl urlService;
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+        ReflectionTestUtils.setField(
+                urlService,
+                "baseUrl",
+                "http://localhost:8080"
+        );
+        ReflectionTestUtils.setField(
+                urlService,
+                "defaultRetentionYears",
+                1L
+        );
+    }
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 1:
+            Should create short URL successfully
+    
+            Expected Result:
+            URL mapping saved and short URL generated
+            """
+    )
+    void shouldCreateShortUrlSuccessfully() {
+        UrlRequestDto request = new UrlRequestDto();
+        request.setOriginalUrl("https://google.com");
+        when(idGenerationContext.generateId()).thenReturn(123456789L);
+        UrlResponseDto response = urlService.shortenUrl(request);
+        assertNotNull(response);
+        assertEquals(
+                "https://google.com",
+                response.getOriginalUrl()
+        );
+        assertNotNull(response.getShortCode());
+        assertNotNull(response.getShortUrl());
+        verify(repository, times(1))
+                .save(any(UrlMapping.class));
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 2:
+            Should use custom alias when provided
+    
+            Expected Result:
+            Custom alias should be used as short code
+            and URL mapping should be saved successfully
+            """
+    )
+    void shouldUseCustomAliasWhenProvided(){
+        UrlRequestDto request = new UrlRequestDto();
+        request.setOriginalUrl("https://google.com");
+        request.setCustomAlias("mygoogle");
+        when(idGenerationContext.generateId()).thenReturn(123456789L);
+        when(repository.existsByShortCode("mygoogle")).thenReturn(false);
+        UrlResponseDto response = urlService.shortenUrl(request);
+        assertTrue(response.getShortUrl().contains("mygoogle"));
+
+        verify(repository, times(1)).save(any(UrlMapping.class));
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 3:
+            Should throw exception when custom alias already exists
+    
+            Expected Result:
+            AliasAlreadyExistsException should be thrown
+            and URL mapping should not be saved
+            """
+    )
+    void shouldThrowExceptionWhenAliasAlreadyExists(){
+        UrlRequestDto request = new UrlRequestDto();
+        request.setOriginalUrl("https://google.com");
+        request.setCustomAlias("mygoogle");
+        when(repository.existsByShortCode("mygoogle"))
+                .thenReturn(true);
+
+        AliasAlreadyExistsException  exception =
+                assertThrows(
+                        AliasAlreadyExistsException.class,
+                        ()->urlService.shortenUrl(request)
+                );
+
+        assertEquals(
+                UrlErrorCode.ALIAS_EXISTS,
+                exception.getErrorCode()
+        );
+
+        verify(repository,never()).save(any(UrlMapping.class));
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 4:
+            Should return original URL successfully from database
+    
+            Expected Result:
+            Original URL should be fetched from database,
+            click count should be incremented,
+            and URL should be cached
+            """
+    )
+    void shouldReturnOriginalUrlSuccessfully(){
+        UrlMapping urlMapping = new UrlMapping();
+        urlMapping.setShortCode("abc123");
+        urlMapping.setOriginalUrl("https://google.com");
+        urlMapping.setExpiresAt(
+                LocalDateTime.now().plusDays(1)
+        );
+        when(urlCacheService.get("abc123")).thenReturn(null);
+        when(repository.findByShortCode("abc123"))
+                .thenReturn(Optional.of(urlMapping));
+
+        String originalUrl = urlService.getOriginalUrl("abc123");
+        assertEquals(
+                "https://google.com",
+                originalUrl
+        );
+        verify(repository,times(1)).incrementClickCount("abc123");
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 5:
+            Should return original URL successfully from cache
+    
+            Expected Result:
+            Original URL should be fetched from cache
+            without querying database
+            """
+    )
+    void shouldReturnOriginalUrlFromCache(){
+        UrlMapping urlMapping = new UrlMapping();
+        urlMapping.setShortCode("abc123");
+        urlMapping.setOriginalUrl("https://google.com");
+        urlMapping.setExpiresAt(
+                LocalDateTime.now().plusDays(1)
+        );
+        when(urlCacheService.get("abc123")).thenReturn("https://google.com");
+        when(repository.findByShortCode("abc123"))
+                .thenReturn(Optional.of(urlMapping));
+
+        String originalUrl = urlService.getOriginalUrl("abc123");
+        assertEquals(
+                "https://google.com",
+                originalUrl
+        );
+        verify(repository,never()).findByShortCode(any());
+        verify(repository,times(1)).incrementClickCount("abc123");
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 6:
+            Should throw URL not found exception
+    
+            Expected Result:
+            UrlNotFoundException should be thrown
+            when short code does not exist
+            """
+    )
+    void shouldThrowUrlNotFoundException(){
+         when(urlCacheService.get("invalid123"))
+                 .thenReturn(null);
+
+         when(repository.findByShortCode("invalid123"))
+                 .thenReturn(Optional.empty());
+
+        UrlNotFoundException exception = assertThrows(
+                UrlNotFoundException.class,
+                ()->urlService.getOriginalUrl("invalid123")
+        );
+
+        assertEquals(
+                UrlErrorCode.URL_NOT_FOUND,
+                exception.getErrorCode()
+        );
+
+        verify(repository,times(1)).findByShortCode("invalid123");
+        verify(repository,never()).incrementClickCount(any());
+        verify(urlCacheService,never()).save(any(),any(),any());
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 7:
+            Should throw expired URL exception
+    
+            Expected Result:
+            ExpiredUrlException should be thrown
+            when URL expiration time has passed
+            """
+    )
+    void shouldThrowExpiredUrlException(){
+        UrlMapping urlMapping = new UrlMapping();
+        urlMapping.setShortCode("expired123");
+        urlMapping.setOriginalUrl("https://google.com");
+        urlMapping.setExpiresAt(
+                LocalDateTime.now().minusDays(1)
+        );
+        when(urlCacheService.get("expired123"))
+                .thenReturn(null);
+        when(repository.findByShortCode("expired123"))
+                .thenReturn((Optional.of(urlMapping)));
+        ExpiredUrlException exception = assertThrows(
+               ExpiredUrlException.class,
+                () ->urlService.getOriginalUrl("expired123")
+        );
+
+        assertEquals(
+                UrlErrorCode.URL_EXPIRED,
+                exception.getErrorCode()
+        );
+        verify(repository,times(1)).findByShortCode("expired123");
+        verify(repository,never()).incrementClickCount(any());
+        verify(urlCacheService,never()).save(any(),any(),any());
+
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 8:
+            Should soft delete URL successfully
+    
+            Expected Result:
+            URL should be marked as deleted
+            and cache entry should be removed
+            """
+    )
+    void shouldSoftDeleteUrlSuccessfully(){
+        UrlMapping urlMapping = new UrlMapping();
+        urlMapping.setShortCode("abc123");
+        urlMapping.setDeletedAt(null);
+
+        when(repository.findByShortCode("abc123"))
+                .thenReturn(Optional.of(urlMapping));
+
+        urlService.softDelete("abc123");
+        assertNotNull(urlMapping.getDeletedAt());
+        verify(repository,times(1)).save(urlMapping);
+        verify(urlCacheService,times(1)).delete("abc123");
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 9:
+            Should throw exception when URL is already deleted
+    
+            Expected Result:
+            UrlNotFoundException should be thrown
+            when attempting to delete an already deleted URL
+            """
+    )
+    void shouldThrowExceptionWhenUrlAlreadyDeleted(){
+        UrlMapping urlMapping = new UrlMapping();
+        urlMapping.setShortCode("abc123");
+        urlMapping.setDeletedAt(LocalDateTime.now());
+        when(repository.findByShortCode("abc123"))
+                .thenReturn(Optional.of(urlMapping));
+        UrlNotFoundException exception = assertThrows(
+                UrlNotFoundException.class,
+                ()->urlService.softDelete("abc123")
+        );
+        assertEquals(
+                UrlErrorCode.URL_DELETED,
+                exception.getErrorCode()
+        );
+        verify(repository,never()).save(any());
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 10:
+            Should restore deleted URL successfully
+    
+            Expected Result:
+            Deleted URL should be restored successfully
+            and cache should be updated
+            """
+    )
+    void shouldRestoreUrlSuccessfully(){
+        UrlMapping urlMapping = new UrlMapping();
+        urlMapping.setShortCode("abc123");
+        urlMapping.setOriginalUrl("https://google.com");
+        urlMapping.setDeletedAt(LocalDateTime.now());
+        urlMapping.setExpiresAt(
+                LocalDateTime.now().plusDays(1)
+        );
+        when(repository.findByShortCode("abc123")).thenReturn(Optional.of(urlMapping));
+        urlService.restoreUrl("abc123");
+        assertNull(urlMapping.getDeletedAt());
+        verify(repository , times(1)).save(urlMapping);
+        verify(urlCacheService,times(1)).save(
+                eq("abc123"),
+                eq("https://google.com"),
+                any(LocalDateTime.class)
+        );
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 11:
+            Should throw exception when restoring non deleted URL
+    
+            Expected Result:
+            InvalidUrlException should be thrown
+            when attempting to restore an active URL
+            """
+    )
+    void shouldThrowExceptionWhenRestoringNonDeletedUrl() {
+        UrlMapping urlMapping = new UrlMapping();
+        urlMapping.setShortCode("abc123");
+        urlMapping.setDeletedAt(null);
+        when(repository.findByShortCode("abc123"))
+                .thenReturn(Optional.of(urlMapping));
+        InvalidUrlException exception = assertThrows(
+                InvalidUrlException.class,
+                () -> urlService.restoreUrl("abc123")
+        );
+        assertEquals(
+                UrlErrorCode.INVALID_URL,
+                exception.getErrorCode()
+        );
+        verify(repository, never()).save(any());
+    }
+}
