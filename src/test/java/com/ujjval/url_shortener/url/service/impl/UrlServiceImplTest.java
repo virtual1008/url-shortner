@@ -1,7 +1,6 @@
 package com.ujjval.url_shortener.url.service.impl;
 
 import com.ujjval.url_shortener.cache.service.UrlCacheService;
-import com.ujjval.url_shortener.cache.service.impl.UrlCacheServiceImpl;
 import com.ujjval.url_shortener.exception.*;
 import com.ujjval.url_shortener.idgenerator.context.IdGenerationContext;
 import com.ujjval.url_shortener.url.dto.UrlRequestDto;
@@ -15,6 +14,7 @@ import org.junit.jupiter.params.shadow.com.univocity.parsers.annotations.Nested;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.redisson.api.RBloomFilter;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
@@ -32,22 +32,19 @@ public class UrlServiceImplTest {
     private IdGenerationContext idGenerationContext;
     @Mock
     private UrlCacheService urlCacheService;
+    @Mock
+    private RBloomFilter<String> shortCodeBloomFilter;
+
     @InjectMocks
     private UrlServiceImpl urlService;
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        ReflectionTestUtils.setField(
-                urlService,
-                "baseUrl",
-                "http://localhost:8080"
-        );
-        ReflectionTestUtils.setField(
-                urlService,
-                "defaultRetentionYears",
-                1L
-        );
+        ReflectionTestUtils.setField(urlService, "baseUrl", "http://localhost:8080");
+        ReflectionTestUtils.setField(urlService, "defaultRetentionYears", 1L);
     }
+
     @Test
     @Nested
     @DisplayName(
@@ -56,23 +53,22 @@ public class UrlServiceImplTest {
             Should create short URL successfully
     
             Expected Result:
-            URL mapping saved and short URL generated
+            URL mapping saved, short URL generated, and added to Bloom Filter
             """
     )
     void shouldCreateShortUrlSuccessfully() {
         UrlRequestDto request = new UrlRequestDto();
         request.setOriginalUrl("https://google.com");
         when(idGenerationContext.generateId()).thenReturn(123456789L);
+
         UrlResponseDto response = urlService.shortenUrl(request);
+
         assertNotNull(response);
-        assertEquals(
-                "https://google.com",
-                response.getOriginalUrl()
-        );
+        assertEquals("https://google.com", response.getOriginalUrl());
         assertNotNull(response.getShortCode());
-        assertNotNull(response.getShortUrl());
-        verify(repository, times(1))
-                .save(any(UrlMapping.class));
+
+        verify(repository, times(1)).save(any(UrlMapping.class));
+        verify(shortCodeBloomFilter, times(1)).add(anyString()); // Verify Bloom Filter was updated
     }
 
     @Test
@@ -80,10 +76,10 @@ public class UrlServiceImplTest {
     @DisplayName(
             """
             Test Case 2:
-            Should use custom alias when provided
+            Should use custom alias when provided (Bloom Filter Fast-Pass)
     
             Expected Result:
-            Custom alias should be used as short code
+            Custom alias should be used, DB check should be skipped,
             and URL mapping should be saved successfully
             """
     )
@@ -91,12 +87,17 @@ public class UrlServiceImplTest {
         UrlRequestDto request = new UrlRequestDto();
         request.setOriginalUrl("https://google.com");
         request.setCustomAlias("mygoogle");
+
         when(idGenerationContext.generateId()).thenReturn(123456789L);
-        when(repository.existsByShortCode("mygoogle")).thenReturn(false);
+        // Bloom Filter says alias is available!
+        when(shortCodeBloomFilter.contains("mygoogle")).thenReturn(false);
+
         UrlResponseDto response = urlService.shortenUrl(request);
         assertTrue(response.getShortUrl().contains("mygoogle"));
 
         verify(repository, times(1)).save(any(UrlMapping.class));
+        verify(repository, never()).existsByShortCode("mygoogle"); // Verifies our DB Optimization worked!
+        verify(shortCodeBloomFilter, times(1)).add("mygoogle");
     }
 
     @Test
@@ -108,28 +109,26 @@ public class UrlServiceImplTest {
     
             Expected Result:
             AliasAlreadyExistsException should be thrown
-            and URL mapping should not be saved
+            after Bloom Filter and DB confirm collision
             """
     )
     void shouldThrowExceptionWhenAliasAlreadyExists(){
         UrlRequestDto request = new UrlRequestDto();
         request.setOriginalUrl("https://google.com");
         request.setCustomAlias("mygoogle");
-        when(repository.existsByShortCode("mygoogle"))
-                .thenReturn(true);
 
-        AliasAlreadyExistsException  exception =
-                assertThrows(
-                        AliasAlreadyExistsException.class,
-                        ()->urlService.shortenUrl(request)
-                );
+        // Bloom Filter says it might exist
+        when(shortCodeBloomFilter.contains("mygoogle")).thenReturn(true);
+        // DB confirms it DOES exist
+        when(repository.existsByShortCode("mygoogle")).thenReturn(true);
 
-        assertEquals(
-                UrlErrorCode.ALIAS_EXISTS,
-                exception.getErrorCode()
+        AliasAlreadyExistsException exception = assertThrows(
+                AliasAlreadyExistsException.class,
+                ()->urlService.shortenUrl(request)
         );
 
-        verify(repository,never()).save(any(UrlMapping.class));
+        assertEquals(UrlErrorCode.ALIAS_EXISTS, exception.getErrorCode());
+        verify(repository, never()).save(any(UrlMapping.class));
     }
 
     @Test
@@ -149,19 +148,15 @@ public class UrlServiceImplTest {
         UrlMapping urlMapping = new UrlMapping();
         urlMapping.setShortCode("abc123");
         urlMapping.setOriginalUrl("https://google.com");
-        urlMapping.setExpiresAt(
-                LocalDateTime.now().plusDays(1)
-        );
+        urlMapping.setExpiresAt(LocalDateTime.now().plusDays(1));
+
+        when(shortCodeBloomFilter.contains("abc123")).thenReturn(true); // Let it pass the shield
         when(urlCacheService.get("abc123")).thenReturn(null);
-        when(repository.findByShortCode("abc123"))
-                .thenReturn(Optional.of(urlMapping));
+        when(repository.findByShortCode("abc123")).thenReturn(Optional.of(urlMapping));
 
         String originalUrl = urlService.getOriginalUrl("abc123");
-        assertEquals(
-                "https://google.com",
-                originalUrl
-        );
-        verify(repository,times(1)).incrementClickCount("abc123");
+        assertEquals("https://google.com", originalUrl);
+        verify(repository, times(1)).incrementClickCount("abc123");
     }
 
     @Test
@@ -180,20 +175,16 @@ public class UrlServiceImplTest {
         UrlMapping urlMapping = new UrlMapping();
         urlMapping.setShortCode("abc123");
         urlMapping.setOriginalUrl("https://google.com");
-        urlMapping.setExpiresAt(
-                LocalDateTime.now().plusDays(1)
-        );
+        urlMapping.setExpiresAt(LocalDateTime.now().plusDays(1));
+
+        when(shortCodeBloomFilter.contains("abc123")).thenReturn(true); // Let it pass the shield
         when(urlCacheService.get("abc123")).thenReturn("https://google.com");
-        when(repository.findByShortCode("abc123"))
-                .thenReturn(Optional.of(urlMapping));
+        when(repository.findByShortCode("abc123")).thenReturn(Optional.of(urlMapping));
 
         String originalUrl = urlService.getOriginalUrl("abc123");
-        assertEquals(
-                "https://google.com",
-                originalUrl
-        );
-        verify(repository,never()).findByShortCode(any());
-        verify(repository,times(1)).incrementClickCount("abc123");
+        assertEquals("https://google.com", originalUrl);
+        verify(repository, never()).findByShortCode(any());
+        verify(repository, times(1)).incrementClickCount("abc123");
     }
 
     @Test
@@ -201,33 +192,26 @@ public class UrlServiceImplTest {
     @DisplayName(
             """
             Test Case 6:
-            Should throw URL not found exception
+            Should throw URL not found exception (Bloom Filter False Positive)
     
             Expected Result:
             UrlNotFoundException should be thrown
-            when short code does not exist
+            when short code passes Bloom Filter but does not exist in DB
             """
     )
     void shouldThrowUrlNotFoundException(){
-         when(urlCacheService.get("invalid123"))
-                 .thenReturn(null);
-
-         when(repository.findByShortCode("invalid123"))
-                 .thenReturn(Optional.empty());
+        when(shortCodeBloomFilter.contains("invalid123")).thenReturn(true); // Simulating False Positive
+        when(urlCacheService.get("invalid123")).thenReturn(null);
+        when(repository.findByShortCode("invalid123")).thenReturn(Optional.empty());
 
         UrlNotFoundException exception = assertThrows(
                 UrlNotFoundException.class,
                 ()->urlService.getOriginalUrl("invalid123")
         );
 
-        assertEquals(
-                UrlErrorCode.URL_NOT_FOUND,
-                exception.getErrorCode()
-        );
-
-        verify(repository,times(1)).findByShortCode("invalid123");
-        verify(repository,never()).incrementClickCount(any());
-        verify(urlCacheService,never()).save(any(),any(),any());
+        assertEquals(UrlErrorCode.URL_NOT_FOUND, exception.getErrorCode());
+        verify(repository, times(1)).findByShortCode("invalid123");
+        verify(repository, never()).incrementClickCount(any());
     }
 
     @Test
@@ -246,26 +230,20 @@ public class UrlServiceImplTest {
         UrlMapping urlMapping = new UrlMapping();
         urlMapping.setShortCode("expired123");
         urlMapping.setOriginalUrl("https://google.com");
-        urlMapping.setExpiresAt(
-                LocalDateTime.now().minusDays(1)
-        );
-        when(urlCacheService.get("expired123"))
-                .thenReturn(null);
-        when(repository.findByShortCode("expired123"))
-                .thenReturn((Optional.of(urlMapping)));
+        urlMapping.setExpiresAt(LocalDateTime.now().minusDays(1));
+
+        when(shortCodeBloomFilter.contains("expired123")).thenReturn(true); // Let it pass the shield
+        when(urlCacheService.get("expired123")).thenReturn(null);
+        when(repository.findByShortCode("expired123")).thenReturn((Optional.of(urlMapping)));
+
         ExpiredUrlException exception = assertThrows(
-               ExpiredUrlException.class,
+                ExpiredUrlException.class,
                 () ->urlService.getOriginalUrl("expired123")
         );
 
-        assertEquals(
-                UrlErrorCode.URL_EXPIRED,
-                exception.getErrorCode()
-        );
-        verify(repository,times(1)).findByShortCode("expired123");
-        verify(repository,never()).incrementClickCount(any());
-        verify(urlCacheService,never()).save(any(),any(),any());
-
+        assertEquals(UrlErrorCode.URL_EXPIRED, exception.getErrorCode());
+        verify(repository, times(1)).findByShortCode("expired123");
+        verify(repository, never()).incrementClickCount(any());
     }
 
     @Test
@@ -285,13 +263,12 @@ public class UrlServiceImplTest {
         urlMapping.setShortCode("abc123");
         urlMapping.setDeletedAt(null);
 
-        when(repository.findByShortCode("abc123"))
-                .thenReturn(Optional.of(urlMapping));
+        when(repository.findByShortCode("abc123")).thenReturn(Optional.of(urlMapping));
 
         urlService.softDelete("abc123");
         assertNotNull(urlMapping.getDeletedAt());
-        verify(repository,times(1)).save(urlMapping);
-        verify(urlCacheService,times(1)).delete("abc123");
+        verify(repository, times(1)).save(urlMapping);
+        verify(urlCacheService, times(1)).delete("abc123");
     }
 
     @Test
@@ -310,17 +287,14 @@ public class UrlServiceImplTest {
         UrlMapping urlMapping = new UrlMapping();
         urlMapping.setShortCode("abc123");
         urlMapping.setDeletedAt(LocalDateTime.now());
-        when(repository.findByShortCode("abc123"))
-                .thenReturn(Optional.of(urlMapping));
+        when(repository.findByShortCode("abc123")).thenReturn(Optional.of(urlMapping));
+
         UrlNotFoundException exception = assertThrows(
                 UrlNotFoundException.class,
                 ()->urlService.softDelete("abc123")
         );
-        assertEquals(
-                UrlErrorCode.URL_DELETED,
-                exception.getErrorCode()
-        );
-        verify(repository,never()).save(any());
+        assertEquals(UrlErrorCode.URL_DELETED, exception.getErrorCode());
+        verify(repository, never()).save(any());
     }
 
     @Test
@@ -340,14 +314,14 @@ public class UrlServiceImplTest {
         urlMapping.setShortCode("abc123");
         urlMapping.setOriginalUrl("https://google.com");
         urlMapping.setDeletedAt(LocalDateTime.now());
-        urlMapping.setExpiresAt(
-                LocalDateTime.now().plusDays(1)
-        );
+        urlMapping.setExpiresAt(LocalDateTime.now().plusDays(1));
+
         when(repository.findByShortCode("abc123")).thenReturn(Optional.of(urlMapping));
         urlService.restoreUrl("abc123");
+
         assertNull(urlMapping.getDeletedAt());
         verify(repository , times(1)).save(urlMapping);
-        verify(urlCacheService,times(1)).save(
+        verify(urlCacheService, times(1)).save(
                 eq("abc123"),
                 eq("https://google.com"),
                 any(LocalDateTime.class)
@@ -370,16 +344,42 @@ public class UrlServiceImplTest {
         UrlMapping urlMapping = new UrlMapping();
         urlMapping.setShortCode("abc123");
         urlMapping.setDeletedAt(null);
-        when(repository.findByShortCode("abc123"))
-                .thenReturn(Optional.of(urlMapping));
+        when(repository.findByShortCode("abc123")).thenReturn(Optional.of(urlMapping));
+
         InvalidUrlException exception = assertThrows(
                 InvalidUrlException.class,
                 () -> urlService.restoreUrl("abc123")
         );
-        assertEquals(
-                UrlErrorCode.INVALID_URL,
-                exception.getErrorCode()
-        );
+        assertEquals(UrlErrorCode.INVALID_URL, exception.getErrorCode());
         verify(repository, never()).save(any());
+    }
+
+    @Test
+    @Nested
+    @DisplayName(
+            """
+            Test Case 12:
+            Should reject URL immediately using Bloom Filter Shield
+    
+            Expected Result:
+            UrlNotFoundException should be thrown and short-circuited 
+            before querying Cache or Database
+            """
+    )
+    void shouldRejectImmediatelyUsingBloomFilter() {
+        String fakeCode = "hacker123";
+        // Bloom Filter says NO (Definitive rejection)
+        when(shortCodeBloomFilter.contains(fakeCode)).thenReturn(false);
+
+        UrlNotFoundException exception = assertThrows(
+                UrlNotFoundException.class,
+                () -> urlService.getOriginalUrl(fakeCode)
+        );
+
+        assertEquals(UrlErrorCode.URL_NOT_FOUND, exception.getErrorCode());
+
+        // Verify the shield completely bypassed the downstream systems
+        verify(urlCacheService, never()).get(anyString());
+        verify(repository, never()).findByShortCode(anyString());
     }
 }

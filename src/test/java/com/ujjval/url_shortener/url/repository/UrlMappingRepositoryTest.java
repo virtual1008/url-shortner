@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DataJpaTest
 @DisplayName("URL Module - Repository Layer Test Suite")
-class UrlMappingRepositoryTest {
+public class UrlMappingRepositoryTest {
 
     @Autowired
     private UrlMappingRepository repository;
