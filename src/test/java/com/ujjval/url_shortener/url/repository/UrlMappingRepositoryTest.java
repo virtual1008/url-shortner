@@ -9,9 +9,12 @@ import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -19,11 +22,21 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DataJpaTest
+@ActiveProfiles("test")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@TestPropertySource(properties = {
+        "spring.jpa.hibernate.ddl-auto=create-drop" // This forces table creation
+})
 @DisplayName("URL Module - Repository Layer Test Suite")
 public class UrlMappingRepositoryTest {
 
     @Autowired
     private UrlMappingRepository repository;
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        repository.deleteAll();
+    }
 
     @PersistenceContext
     private EntityManager entityManager;

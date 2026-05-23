@@ -1,15 +1,12 @@
 package com.ujjval.url_shortener.integration;
-
+import com.ujjval.url_shortener.ratelimit.strategy.RateLimiterStrategy;
+import org.junit.jupiter.api.*;
+import org.springframework.http.HttpHeaders;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ujjval.url_shortener.url.dto.UrlRequestDto;
 import com.ujjval.url_shortener.url.entity.UrlMapping;
 import com.ujjval.url_shortener.url.repository.UrlMappingRepository;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.DisplayNameGeneration;
-import org.junit.jupiter.api.DisplayNameGenerator;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -17,7 +14,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import jakarta.persistence.EntityManager;
@@ -25,6 +24,7 @@ import jakarta.persistence.PersistenceContext;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -39,9 +39,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@AutoConfigureTestDatabase(
-        replace = AutoConfigureTestDatabase.Replace.ANY
-)
 @TestPropertySource(properties = {
         "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop"
@@ -51,6 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         DisplayNameGenerator.ReplaceUnderscores.class
 )
 @Transactional
+@ActiveProfiles("test")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 public class FullUrlFlowIntegrationTest {
 
     @Autowired
@@ -64,6 +63,19 @@ public class FullUrlFlowIntegrationTest {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    @Autowired
+    private RateLimiterStrategy rateLimiterStrategy;
+
+    @BeforeEach
+    void resetRateLimiter() {
+        // This clears the internal map of the InMemoryRateLimiterStrategy
+        // without needing to add a 'reset()' method to your production interface
+        java.util.Map<?, ?> limiters = (java.util.Map<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(rateLimiterStrategy, "limiters");
+        if (limiters != null) {
+            limiters.clear();
+        }
+    }
 
     @Nested
     @DisplayName("Complete URL Lifecycle Tests")
@@ -147,11 +159,16 @@ public class FullUrlFlowIntegrationTest {
             mockMvc.perform(
                             get("/api/v1/url/" + shortCode)
                     )
-                    .andExpect(status().is3xxRedirection())
+                    .andExpect(status().isMovedPermanently())
                     .andExpect(
                             header().string(
                                     "Location",
                                     "https://google.com"
+                            )
+                    ).andExpect(
+                            header().string(
+                                    HttpHeaders.CACHE_CONTROL,
+                                    "max-age=3600, public"
                             )
                     );
 

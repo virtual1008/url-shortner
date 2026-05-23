@@ -7,6 +7,7 @@ import com.ujjval.url_shortener.url.dto.UrlRequestDto;
 import com.ujjval.url_shortener.url.dto.UrlResponseDto;
 import com.ujjval.url_shortener.url.entity.UrlMapping;
 import com.ujjval.url_shortener.url.repository.UrlMappingRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ import static org.mockito.Mockito.*;
 public class UrlServiceImplTest {
     @Mock
     private UrlMappingRepository repository;
+    private AutoCloseable closeable;
     @Mock
     private IdGenerationContext idGenerationContext;
     @Mock
@@ -40,10 +42,17 @@ public class UrlServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        //closeable = MockitoAnnotations.openMocks(this);
         MockitoAnnotations.openMocks(this);
+        urlService = new UrlServiceImpl(repository, idGenerationContext, urlCacheService, shortCodeBloomFilter);
+
         ReflectionTestUtils.setField(urlService, "baseUrl", "http://localhost:8080");
         ReflectionTestUtils.setField(urlService, "defaultRetentionYears", 1L);
     }
+//    @AfterEach
+//    void tearDown() throws Exception {
+//        closeable.close();
+//    }
 
     @Test
     @Nested
@@ -195,7 +204,7 @@ public class UrlServiceImplTest {
             Should throw URL not found exception (Bloom Filter False Positive)
     
             Expected Result:
-            UrlNotFoundException should be thrown
+            Should throw LightweightUrlNotFoundException (Bloom Filter False Positive)
             when short code passes Bloom Filter but does not exist in DB
             """
     )
@@ -204,8 +213,8 @@ public class UrlServiceImplTest {
         when(urlCacheService.get("invalid123")).thenReturn(null);
         when(repository.findByShortCode("invalid123")).thenReturn(Optional.empty());
 
-        UrlNotFoundException exception = assertThrows(
-                UrlNotFoundException.class,
+        LightweightUrlNotFoundException exception = assertThrows(
+                LightweightUrlNotFoundException.class,
                 ()->urlService.getOriginalUrl("invalid123")
         );
 
@@ -371,15 +380,17 @@ public class UrlServiceImplTest {
         // Bloom Filter says NO (Definitive rejection)
         when(shortCodeBloomFilter.contains(fakeCode)).thenReturn(false);
 
-        UrlNotFoundException exception = assertThrows(
-                UrlNotFoundException.class,
+        LightweightUrlNotFoundException exception = assertThrows(
+                LightweightUrlNotFoundException.class,
                 () -> urlService.getOriginalUrl(fakeCode)
         );
 
         assertEquals(UrlErrorCode.URL_NOT_FOUND, exception.getErrorCode());
 
         // Verify the shield completely bypassed the downstream systems
-        verify(urlCacheService, never()).get(anyString());
-        verify(repository, never()).findByShortCode(anyString());
+//        verify(urlCacheService, never()).get(anyString());
+//        verify(repository, never()).findByShortCode(anyString());
+        verifyNoInteractions(urlCacheService);
+        verifyNoInteractions(repository);
     }
 }

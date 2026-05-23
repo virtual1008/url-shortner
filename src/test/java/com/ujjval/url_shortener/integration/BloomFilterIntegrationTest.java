@@ -3,7 +3,9 @@ package com.ujjval.url_shortener.integration;
 import org.junit.jupiter.api.*;
 import org.redisson.api.RBloomFilter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,6 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
         "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop"
 })
+@ActiveProfiles("test")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @DisplayName("Bloom Filter - Integration Test Suite")
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 public class BloomFilterIntegrationTest {

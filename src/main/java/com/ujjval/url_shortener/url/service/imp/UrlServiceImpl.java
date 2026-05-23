@@ -2,11 +2,7 @@ package com.ujjval.url_shortener.url.service.impl;
 
 import com.ujjval.url_shortener.cache.service.UrlCacheService;
 import com.ujjval.url_shortener.common.util.Base62Encoder;
-import com.ujjval.url_shortener.exception.AliasAlreadyExistsException;
-import com.ujjval.url_shortener.exception.ExpiredUrlException;
-import com.ujjval.url_shortener.exception.InvalidUrlException;
-import com.ujjval.url_shortener.exception.UrlNotFoundException;
-import com.ujjval.url_shortener.exception.UrlErrorCode; // Added this import
+import com.ujjval.url_shortener.exception.*;
 import com.ujjval.url_shortener.idgenerator.context.IdGenerationContext;
 import com.ujjval.url_shortener.url.dto.UrlRequestDto;
 import com.ujjval.url_shortener.url.dto.UrlResponseDto;
@@ -104,7 +100,8 @@ public class UrlServiceImpl implements UrlService {
         if (!shortCodeBloomFilter.contains(shortCode)) {
             log.warn("Bloom Filter REJECTED shortCode: {}. Short-circuiting request.", shortCode);
             // Throwing your shiny new RFC 7807 exception!
-            throw new UrlNotFoundException(UrlErrorCode.URL_NOT_FOUND);
+            //throw new UrlNotFoundException(UrlErrorCode.URL_NOT_FOUND);
+            throw new LightweightUrlNotFoundException(UrlErrorCode.URL_NOT_FOUND);
         }
 
         String cacheUrl = urlCacheService.get(shortCode);
@@ -121,7 +118,7 @@ public class UrlServiceImpl implements UrlService {
                 .orElseThrow(() -> {
                     log.warn("Redirection failed: Short URL not found for code: {}", shortCode);
                     // Replaced string with Enum
-                    return new UrlNotFoundException(UrlErrorCode.URL_NOT_FOUND);
+                    return new LightweightUrlNotFoundException(UrlErrorCode.URL_NOT_FOUND);
                 });
 
         if (urlMapping.getDeletedAt() != null) {
