@@ -51,6 +51,10 @@ application:
     default-page: 0
     default-size: 20
     max-size: 100
+  ratelimit:
+    # Options: "none" (Baseline), "in-memory" (Local Dev), "redis" (Distributed)
+    type: "redis"
+    key-prefix: "rate_limit:ip:"
 
 logging:
   level:

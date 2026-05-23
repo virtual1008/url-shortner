@@ -1,32 +1,31 @@
 package com.ujjval.url_shortener.url.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ujjval.url_shortener.ratelimit.RateLimitFilter;
+import com.ujjval.url_shortener.ratelimit.strategy.RateLimiterStrategy;
 import com.ujjval.url_shortener.url.dto.UrlRequestDto;
 import com.ujjval.url_shortener.url.dto.UrlResponseDto;
 import com.ujjval.url_shortener.url.service.UrlService;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.DisplayNameGeneration;
-import org.junit.jupiter.api.DisplayNameGenerator;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -36,19 +35,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(UrlShortenerController.class)
+
+@ActiveProfiles("test")
 @TestPropertySource(properties = {
         "application.pagination.max-size=100"
 })
 @DisplayName("URL Module - Controller Layer Test Suite")
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
+@WebMvcTest(controllers = UrlShortenerController.class,
+        excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = RateLimitFilter.class))
 public class UrlShortenerControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockBean
+    private RateLimiterStrategy rateLimiterStrategy;
+
+    @MockBean
     private UrlService urlService;
+
+    @BeforeEach
+    void setup() {
+        // This now works because we added reset() to the interface!
+        rateLimiterStrategy.reset();
+    }
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -82,10 +93,10 @@ public class UrlShortenerControllerTest {
                     .thenReturn(responseDto);
 
             mockMvc.perform(post("/api/v1/url/shorten")
-                                    .contentType(MediaType.APPLICATION_JSON)
-                                    .content(
-                                            objectMapper.writeValueAsString(requestDto)
-                                    )
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(
+                                    objectMapper.writeValueAsString(requestDto)
+                            )
                     )
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.originalUrl")
@@ -95,7 +106,8 @@ public class UrlShortenerControllerTest {
                     .andExpect(jsonPath("$.shortUrl")
                             .value("http://localhost:8080/abc123"));
 
-            verify(urlService).shortenUrl(any());
+            //verify(urlService).shortenUrl(any());
+            verify(urlService, times(1)).shortenUrl(any());
         }
     }
 
@@ -109,19 +121,21 @@ public class UrlShortenerControllerTest {
                 Should redirect to original URL successfully
 
                 Expected Result:
-                HTTP redirect response should be returned
-                with original URL location
+                HTTP 301 Permanent Redirect response should be returned
+                with original URL location and Cache-Control headers
                 """
         )
         void shouldRedirectToOriginalUrlSuccessfully() throws Exception {
             when(urlService.getOriginalUrl("abc123"))
                     .thenReturn("https://google.com");
-            mockMvc.perform(get("/api/v1/url/abc123"))
-                    .andExpect(status().is3xxRedirection())
-                    .andExpect(header()
-                            .string("Location", "https://google.com"));
 
-            verify(urlService).getOriginalUrl("abc123");
+            mockMvc.perform(get("/api/v1/url/abc123"))
+                    .andExpect(status().isMovedPermanently()) // Specifically checking for 301
+                    .andExpect(header().string(HttpHeaders.LOCATION, "https://google.com"))
+                    .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "max-age=3600, public")); // Verifying our new caching strategy
+
+            //verify(urlService).getOriginalUrl("abc123");
+            verify(urlService, times(1)).getOriginalUrl("abc123");
         }
     }
 
@@ -145,7 +159,8 @@ public class UrlShortenerControllerTest {
             mockMvc.perform(delete("/api/v1/url/abc123"))
                     .andExpect(status().isOk());
 
-            verify(urlService).softDelete("abc123");
+            //verify(urlService).softDelete("abc123");
+            verify(urlService, times(1)).softDelete("abc123");
         }
     }
 
@@ -196,15 +211,15 @@ public class UrlShortenerControllerTest {
                             .shortUrl("http://localhost:8080/abc123")
                             .build();
             Page<UrlResponseDto> page = new PageImpl<>(
-                            List.of(responseDto),
-                            PageRequest.of(0, 20),
-                            1
-                    );
+                    List.of(responseDto),
+                    PageRequest.of(0, 20),
+                    1
+            );
             when(urlService.getAllUrls(any()))
                     .thenReturn(page);
             mockMvc.perform(get("/api/v1/url")
-                                    .param("page", "0")
-                                    .param("size", "20")
+                            .param("page", "0")
+                            .param("size", "20")
                     )
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content[0].shortCode")
@@ -233,17 +248,17 @@ public class UrlShortenerControllerTest {
                             .build();
 
             Page<UrlResponseDto> page = new PageImpl<>(
-                            List.of(responseDto),
-                            PageRequest.of(0, 20),
-                            1
-                    );
+                    List.of(responseDto),
+                    PageRequest.of(0, 20),
+                    1
+            );
 
             when(urlService.getUrlsReadyForHardDelete(any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/v1/url/trash")
-                                    .param("page", "0")
-                                    .param("size", "20")
+                            .param("page", "0")
+                            .param("size", "20")
                     )
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content[0].shortCode")

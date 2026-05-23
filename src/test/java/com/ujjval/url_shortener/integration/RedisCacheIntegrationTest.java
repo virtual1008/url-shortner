@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -36,9 +37,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@AutoConfigureTestDatabase(
-        replace = AutoConfigureTestDatabase.Replace.ANY
-)
 @Transactional
 @TestPropertySource(properties = {
         "spring.flyway.enabled=false",
@@ -50,6 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayNameGeneration(
         DisplayNameGenerator.ReplaceUnderscores.class
 )
+@ActiveProfiles("test")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 public class RedisCacheIntegrationTest {
 
     @Autowired
