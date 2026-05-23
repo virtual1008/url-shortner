@@ -9,10 +9,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.net.URI;
 
 @RestController
 @RequestMapping("/api/v1/url")
@@ -34,18 +37,27 @@ public class UrlShortenerController {
         );
     }
 
-    @GetMapping("/{shortCode}")
-    public void redirectToOriginalUrl(
-            @PathVariable String shortCode,
-            HttpServletResponse response
-    ) throws IOException {
+//    @GetMapping("/{shortCode}")
+//    public void redirectToOriginalUrl(
+//            @PathVariable String shortCode,
+//            HttpServletResponse response
+//    ) throws IOException {
+//
+//        String originalUrl =
+//                urlService.getOriginalUrl(shortCode);
+//
+//        response.sendRedirect(originalUrl);
+//    }
+@GetMapping("/{shortCode}")
+public ResponseEntity<Void> redirectToOriginalUrl(@PathVariable String shortCode) {
+    String originalUrl = urlService.getOriginalUrl(shortCode);
 
-        String originalUrl =
-                urlService.getOriginalUrl(shortCode);
-
-        response.sendRedirect(originalUrl);
-    }
-
+    // Build the HTTP 301 Permanent Redirect
+    return ResponseEntity.status(HttpStatus.MOVED_PERMANENTLY)
+            .location(URI.create(originalUrl))
+            .header(HttpHeaders.CACHE_CONTROL, "max-age=3600, public") // Cache in browser for 1 hour
+            .build();
+}
     @DeleteMapping("/{shortCode}")
     public ResponseEntity<String> deleteUrl(@PathVariable String shortCode) {
         urlService.softDelete(shortCode);
