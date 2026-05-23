@@ -16,6 +16,7 @@ import com.ujjval.url_shortener.url.service.UrlService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RBloomFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -34,6 +35,7 @@ public class UrlServiceImpl implements UrlService {
     private final IdGenerationContext idGenerationContext;
     private final UrlCacheService urlCacheService;
 
+    private final RBloomFilter<String> shortCodeBloomFilter;
     @Value("${application.base-url}")
     private String baseUrl;
 
@@ -58,11 +60,13 @@ public class UrlServiceImpl implements UrlService {
         if (requestDto.getCustomAlias() != null && !requestDto.getCustomAlias().isBlank()) {
             shortCode = requestDto.getCustomAlias();
             log.debug("Evaluating custom alias request: {}", shortCode);
-
-            if (repository.existsByShortCode(shortCode)) {
-                log.warn("Alias creation rejected: Custom alias '{}' already exists", shortCode);
-                // Replaced string with Enum
-                throw new AliasAlreadyExistsException(UrlErrorCode.ALIAS_EXISTS);
+            if (shortCodeBloomFilter.contains(shortCode)) {
+                // The filter says "Yes". Because of false positives, we MUST check the DB to be sure.
+                log.debug("Bloom filter indicated potential alias collision. Querying database to confirm.");
+                if (repository.existsByShortCode(shortCode)) {
+                    log.warn("Alias creation rejected: Custom alias '{}' already exists", shortCode);
+                    throw new AliasAlreadyExistsException(UrlErrorCode.ALIAS_EXISTS);
+                }
             }
         } else {
             shortCode = Base62Encoder.encode(id);
@@ -80,6 +84,9 @@ public class UrlServiceImpl implements UrlService {
 
         repository.save(urlMapping);
 
+        shortCodeBloomFilter.add(shortCode);
+        log.debug("Added shortCode {} to distributed Bloom Filter", shortCode);
+
         String shortUrl = baseUrl + "/" + shortCode;
 
         log.info("Successfully created short URL. ShortCode: {}, ExpiresAt: {}", shortCode, expiresAt);
@@ -94,6 +101,12 @@ public class UrlServiceImpl implements UrlService {
     @Override
     public String getOriginalUrl(String shortCode) {
         log.debug("Attempting to retrieve original URL for shortCode: {}", shortCode);
+        if (!shortCodeBloomFilter.contains(shortCode)) {
+            log.warn("Bloom Filter REJECTED shortCode: {}. Short-circuiting request.", shortCode);
+            // Throwing your shiny new RFC 7807 exception!
+            throw new UrlNotFoundException(UrlErrorCode.URL_NOT_FOUND);
+        }
+
         String cacheUrl = urlCacheService.get(shortCode);
 
         if (cacheUrl != null) {

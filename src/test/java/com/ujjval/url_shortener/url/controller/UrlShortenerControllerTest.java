@@ -42,7 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @DisplayName("URL Module - Controller Layer Test Suite")
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
-class UrlShortenerControllerTest {
+public class UrlShortenerControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
