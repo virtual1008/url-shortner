@@ -51,7 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         DisplayNameGenerator.ReplaceUnderscores.class
 )
 @Transactional
-class FullUrlFlowIntegrationTest {
+public class FullUrlFlowIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

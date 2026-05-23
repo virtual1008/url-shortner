@@ -10,6 +10,7 @@ import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import org.redisson.api.RBloomFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -63,6 +64,9 @@ public class RedisCacheIntegrationTest {
     @PersistenceContext
     private EntityManager entityManager;
 
+    @Autowired
+    private RBloomFilter<String> shortCodeBloomFilter;
+
     @Nested
     @DisplayName("Redis Cache Flow Tests")
     class RedisCacheFlowTests {
@@ -94,6 +98,8 @@ public class RedisCacheIntegrationTest {
             );
 
             repository.save(urlMapping);
+            shortCodeBloomFilter.add("cache123");
+
             redisTemplate.delete("cache123");
 
             mockMvc.perform(get("/api/v1/url/cache123")
@@ -162,6 +168,9 @@ public class RedisCacheIntegrationTest {
             );
 
             repository.save(urlMapping);
+
+            shortCodeBloomFilter.add("redis123");
+
             redisTemplate.delete("redis123");
 
             // =========================================================
@@ -242,6 +251,7 @@ public class RedisCacheIntegrationTest {
 
             repository.save(urlMapping);
 
+            shortCodeBloomFilter.add("delete123");
             // =========================================================
             // POPULATE CACHE
             // =========================================================
@@ -313,6 +323,7 @@ public class RedisCacheIntegrationTest {
 
             repository.save(urlMapping);
 
+            shortCodeBloomFilter.add("ttl123");
             mockMvc.perform(
                             get("/api/v1/url/ttl123")
                     )
