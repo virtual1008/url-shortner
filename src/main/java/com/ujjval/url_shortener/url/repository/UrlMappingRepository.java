@@ -21,10 +21,10 @@ public interface UrlMappingRepository extends JpaRepository<UrlMapping,Long> {
     @Transactional
     int deleteByDeletedAtBefore(LocalDateTime time);
 
-    @Modifying
-    @Transactional
-    @Query("UPDATE UrlMapping u SET u.clickCount = u.clickCount + 1 WHERE u.shortCode = :shortCode")
-    void incrementClickCount(@Param("shortCode") String shortCode);
+//    @Modifying
+//    @Transactional
+//    @Query("UPDATE UrlMapping u SET u.clickCount = u.clickCount + 1 WHERE u.shortCode = :shortCode")
+//    void incrementClickCount(@Param("shortCode") String shortCode);
 
     Page<UrlMapping> findByDeletedAtNotNull(Pageable pageable);
 }

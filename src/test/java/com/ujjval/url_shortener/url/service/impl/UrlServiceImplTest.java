@@ -165,7 +165,7 @@ public class UrlServiceImplTest {
 
         String originalUrl = urlService.getOriginalUrl("abc123");
         assertEquals("https://google.com", originalUrl);
-        verify(repository, times(1)).incrementClickCount("abc123");
+        //verify(repository, times(1)).incrementClickCount("abc123");
     }
 
     @Test
@@ -193,7 +193,7 @@ public class UrlServiceImplTest {
         String originalUrl = urlService.getOriginalUrl("abc123");
         assertEquals("https://google.com", originalUrl);
         verify(repository, never()).findByShortCode(any());
-        verify(repository, times(1)).incrementClickCount("abc123");
+        //verify(repository, times(1)).incrementClickCount("abc123");
     }
 
     @Test
@@ -220,7 +220,7 @@ public class UrlServiceImplTest {
 
         assertEquals(UrlErrorCode.URL_NOT_FOUND, exception.getErrorCode());
         verify(repository, times(1)).findByShortCode("invalid123");
-        verify(repository, never()).incrementClickCount(any());
+        //verify(repository, never()).incrementClickCount(any());
     }
 
     @Test
@@ -252,7 +252,7 @@ public class UrlServiceImplTest {
 
         assertEquals(UrlErrorCode.URL_EXPIRED, exception.getErrorCode());
         verify(repository, times(1)).findByShortCode("expired123");
-        verify(repository, never()).incrementClickCount(any());
+        //verify(repository, never()).incrementClickCount(any());
     }
 
     @Test

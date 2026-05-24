@@ -107,7 +107,7 @@ public class UrlServiceImpl implements UrlService {
         String cacheUrl = urlCacheService.get(shortCode);
 
         if (cacheUrl != null) {
-            repository.incrementClickCount(shortCode);
+            //repository.incrementClickCount(shortCode);
             log.debug("Cache HIT for shortCode: {}", shortCode);
             return cacheUrl;
         }
@@ -133,7 +133,7 @@ public class UrlServiceImpl implements UrlService {
             throw new ExpiredUrlException(UrlErrorCode.URL_EXPIRED);
         }
 
-        repository.incrementClickCount(shortCode);
+        //repository.incrementClickCount(shortCode);
         urlCacheService.save(shortCode, urlMapping.getOriginalUrl(), urlMapping.getExpiresAt());
 
         log.debug("Successfully retrieved and cached original URL for shortCode: {}", shortCode);

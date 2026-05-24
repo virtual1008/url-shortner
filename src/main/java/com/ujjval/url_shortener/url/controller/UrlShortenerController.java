@@ -1,5 +1,7 @@
 package com.ujjval.url_shortener.url.controller;
 
+import com.ujjval.url_shortener.analytics.strategy.ClickTrackingStrategy;
+import com.ujjval.url_shortener.common.util.ClientIpUtil;
 import com.ujjval.url_shortener.url.dto.UrlRequestDto;
 import com.ujjval.url_shortener.url.dto.UrlResponseDto;
 import com.ujjval.url_shortener.url.service.UrlService;
@@ -27,6 +29,10 @@ public class UrlShortenerController {
     @Value("${application.pagination.max-size:100}")
     private int maxPageSize;
 
+    private final ClickTrackingStrategy clickTrackingStrategy;
+
+    //private final ClientIpUtil clientIpUtil;
+
     @PostMapping("/shorten")
     public ResponseEntity<UrlResponseDto> shortenUrl(
             @Valid @RequestBody UrlRequestDto requestDto
@@ -48,16 +54,19 @@ public class UrlShortenerController {
 //
 //        response.sendRedirect(originalUrl);
 //    }
-@GetMapping("/{shortCode}")
-public ResponseEntity<Void> redirectToOriginalUrl(@PathVariable String shortCode) {
-    String originalUrl = urlService.getOriginalUrl(shortCode);
+    @GetMapping("/{shortCode}")
+    public ResponseEntity<Void> redirectToOriginalUrl(@PathVariable String shortCode) {
+        String originalUrl = urlService.getOriginalUrl(shortCode);
+        String clientIp = ClientIpUtil.getClientIp();
+        String userAgent = ClientIpUtil.getUserAgent();
+        clickTrackingStrategy.trackClick(shortCode,clientIp,userAgent);
 
-    // Build the HTTP 301 Permanent Redirect
-    return ResponseEntity.status(HttpStatus.MOVED_PERMANENTLY)
-            .location(URI.create(originalUrl))
-            .header(HttpHeaders.CACHE_CONTROL, "max-age=3600, public") // Cache in browser for 1 hour
-            .build();
-}
+        // Build the HTTP 301 Permanent Redirect
+        return ResponseEntity.status(HttpStatus.MOVED_PERMANENTLY)
+                .location(URI.create(originalUrl))
+                .header(HttpHeaders.CACHE_CONTROL, "max-age=3600, public") // Cache in browser for 1 hour
+                .build();
+    }
     @DeleteMapping("/{shortCode}")
     public ResponseEntity<String> deleteUrl(@PathVariable String shortCode) {
         urlService.softDelete(shortCode);
