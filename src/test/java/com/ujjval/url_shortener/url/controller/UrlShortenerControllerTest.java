@@ -55,6 +55,8 @@ public class UrlShortenerControllerTest {
     @MockBean
     private UrlService urlService;
 
+    @MockBean
+    private com.ujjval.url_shortener.analytics.strategy.ClickTrackingStrategy clickTrackingStrategy;
     @BeforeEach
     void setup() {
         // This now works because we added reset() to the interface!
@@ -136,6 +138,7 @@ public class UrlShortenerControllerTest {
 
             //verify(urlService).getOriginalUrl("abc123");
             verify(urlService, times(1)).getOriginalUrl("abc123");
+            verify(clickTrackingStrategy, times(1)).trackClick(eq("abc123"), any(), any());
         }
     }
 
