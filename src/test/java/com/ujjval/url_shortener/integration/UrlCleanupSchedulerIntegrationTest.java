@@ -33,10 +33,20 @@ public class UrlCleanupSchedulerIntegrationTest {
     private UrlMappingRepository repository;
 
     @Test
-    @DisplayName("Should remove URLs deleted longer than retention period")
+    @DisplayName(
+            """
+            Test Case 1:
+            Should remove URLs deleted longer than retention period
+
+            Expected Result:
+            Old deleted URLs should be purged from the database, 
+            while recently deleted URLs should remain untouched
+            """
+    )
     void shouldRemoveOldDeletedUrls() {
         // 1. Prepare data: URL deleted 40 days ago
         UrlMapping oldUrl = new UrlMapping();
+        oldUrl.setId(1001L);
         oldUrl.setShortCode("old123");
         oldUrl.setOriginalUrl("https://old.com");
         oldUrl.setDeletedAt(LocalDateTime.now().minusDays(40));
@@ -44,6 +54,7 @@ public class UrlCleanupSchedulerIntegrationTest {
 
         // 2. Prepare data: URL deleted 5 days ago (should stay)
         UrlMapping recentUrl = new UrlMapping();
+        recentUrl.setId(1002L);
         recentUrl.setShortCode("new123");
         recentUrl.setOriginalUrl("https://new.com");
         recentUrl.setDeletedAt(LocalDateTime.now().minusDays(5));

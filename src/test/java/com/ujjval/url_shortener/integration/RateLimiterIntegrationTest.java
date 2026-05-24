@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -24,10 +25,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "application.rate-limit.capacity=5"
+})
 public class RateLimiterIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
     @Autowired
     private WebApplicationContext context;
 
@@ -41,6 +48,7 @@ public class RateLimiterIntegrationTest {
                 .addFilter(new RateLimitFilter(rateLimiterStrategy), "/*")
                 .build();
     }
+
     @AfterEach
     void tearDown() {
         // Access the private 'limiters' map inside InMemoryRateLimiterStrategy
@@ -52,7 +60,16 @@ public class RateLimiterIntegrationTest {
     }
 
     @Test
-    @DisplayName("Should throttle requests when in-memory capacity is exceeded")
+    @DisplayName(
+            """
+            Test Case 1:
+            Should throttle requests when in-memory capacity is exceeded
+
+            Expected Result:
+            HTTP 429 Too Many Requests response should be returned
+            after the rate limit capacity of 5 is reached
+            """
+    )
     void shouldThrottleRequestsWhenCapacityExceeded() throws Exception {
         String requestJson = "{\"originalUrl\":\"https://google.com\"}";
         String clientIp = "192.168.1.1";
